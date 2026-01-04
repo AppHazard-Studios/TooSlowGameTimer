@@ -15,7 +15,7 @@ class TooSlowApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Too Slow Loser',
+      title: 'Too Slow Game Timer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.light,

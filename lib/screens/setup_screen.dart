@@ -13,17 +13,20 @@ class SetupScreen extends StatefulWidget {
   State<SetupScreen> createState() => _SetupScreenState();
 }
 
-class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStateMixin, RouteAware {
+class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin {
   final List<PlayerData> _players = [];
   String _selectedMode = GameConstants.modes[1];
   int _timerDuration = GameConstants.defaultTimerSeconds;
   bool _isLongPressing = false;
   late AnimationController _longPressController;
+  late AnimationController _pulseController; // ADD THIS
+  late Animation<double> _pulseAnimation; // ADD THIS
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
     _longPressController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -33,6 +36,16 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
       }
       setState(() {});
     });
+
+    // ADD PULSE ANIMATION
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+
+    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
   }
 
   @override
@@ -48,6 +61,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   @override
   void dispose() {
     _longPressController.dispose();
+    _pulseController.dispose(); // ADD THIS
     for (var player in _players) {
       player.controller.dispose();
     }
@@ -61,6 +75,9 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     double tapX = details.localPosition.dx;
     double tapY = details.localPosition.dy;
 
+    // Block bottom area
+    if (tapY > size.height - 240) return;
+
     // Don't add new player if current player hasn't been named
     if (_players.isNotEmpty && _players.last.controller.text.trim().isEmpty) {
       _showMessage('Name the current player first!');
@@ -68,46 +85,42 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
       return;
     }
 
-    // Close all existing name inputs
-    for (var player in _players) {
-      player.showingInput = false;
+    // Close all existing name inputs AND auto-name if empty
+    for (int i = 0; i < _players.length; i++) {
+      if (_players[i].showingInput && _players[i].controller.text.trim().isEmpty) {
+        _players[i].controller.text = 'Player ${i + 1}'; // Auto-assign
+      }
+      _players[i].showingInput = false;
     }
     FocusScope.of(context).unfocus();
 
-    // Define allowed area
-    final minY = 50.0;
-    final maxY = size.height - 230.0; // Keep away from controls
+    // Clamp tap position
+    if (tapY < 50) tapY = 50 + 20;
+    if (tapY > size.height - 230 - 20) tapY = size.height - 250;
+
+    // Figure dimensions
     final figureHeight = 170.0;
     final figureWidth = 140.0;
 
-    // Clamp tap position to allowed area
-    if (tapY < minY) tapY = minY + 20;
-    if (tapY > maxY) tapY = maxY - 20;
-
-    // Calculate widget position so HEAD is at (clamped) tap point
     double widgetLeft = tapX - 70;
     double widgetTop = tapY - 12;
 
-    // Adjust horizontal bounds
+    // Adjust bounds
     if (widgetLeft < 10) widgetLeft = 10;
     if (widgetLeft > size.width - figureWidth - 10) {
       widgetLeft = size.width - figureWidth - 10;
     }
 
-    // Ensure bottom doesn't overlap controls
     final maxBottom = size.height - 230;
     if (widgetTop + figureHeight > maxBottom) {
       widgetTop = maxBottom - figureHeight;
     }
 
-    // Ensure not too close to top
-    if (widgetTop < minY) widgetTop = minY;
+    if (widgetTop < 50) widgetTop = 50;
 
-    // Calculate relative position
     final relativeX = tapX / size.width;
     final relativeY = tapY / size.height;
 
-    // Haptic feedback
     HapticFeedback.lightImpact();
 
     setState(() {
@@ -125,11 +138,12 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     final position = details.localPosition;
     final size = MediaQuery.of(context).size;
 
-    // Only allow long press on bottom area
+    // Only allow long press on bottom area AND prevent it from triggering tap
     if (position.dy > size.height - 220) {
-      HapticFeedback.selectionClick(); // Light haptic
+      HapticFeedback.selectionClick();
       setState(() => _isLongPressing = true);
       _longPressController.forward();
+      // Don't call _handleTapDown - long press is separate
     }
   }
 
@@ -155,16 +169,19 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
 
   Color _getPlayerColor(int index) {
     final colors = [
-      const Color(0xFFFF6B35),
-      const Color(0xFF4ECDC4),
-      const Color(0xFFFFD60A),
-      const Color(0xFFFF006E),
-      const Color(0xFF8338EC),
-      const Color(0xFF06FFA5),
-      const Color(0xFFFF9F1C),
-      const Color(0xFF3A86FF),
-      const Color(0xFFFB5607),
-      const Color(0xFF00F5FF),
+      // HIGH CONTRAST on hot pink
+      const Color(0xFFFFD60A), // Bright yellow (complementary)
+      const Color(0xFF06FFA5), // Bright mint green
+      const Color(0xFF00D9FF), // Neon cyan
+      const Color(0xFFFFFFFF), // Pure white (high contrast)
+      const Color(0xFF4CC9F0), // Bright sky blue
+      const Color(0xFF7209B7), // Deep purple
+      const Color(0xFFB5FF00), // Lime green
+      const Color(0xFFFFA500), // Bright orange
+      const Color(0xFF00FFFF), // Cyan
+      const Color(0xFF9D4EDD), // Lavender purple
+      const Color(0xFFFFE066), // Golden yellow
+      const Color(0xFF00F5A0), // Aqua green
     ];
     return colors[index % colors.length];
   }
@@ -323,7 +340,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFFF9F1C),
+        backgroundColor: const Color(0xFFFF006E), // Deep navy blue
         body: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTapDown: _handleTapDown,
@@ -333,22 +350,22 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
           child: SafeArea(
             child: Stack(
               children: [
-              Positioned(
-              top: 20,
-              left: 0,
-              right: 0,
-              child: IgnorePointer(
-                child: Text(
-                  'Tap anywhere to add players',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600, // Changed from w500
-                    color: Colors.white, // Changed from white70
+                Positioned(
+                  top: 20,
+                  left: 0,
+                  right: 0,
+                  child: IgnorePointer(
+                    child: Text(
+                      'Tap anywhere to add players',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFFFFDF5), // Warm off-white
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
 
                 if (_players.isEmpty)
                   Center(
@@ -361,7 +378,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                             style: TextStyle(
                               fontSize: 64,
                               fontWeight: FontWeight.w900,
-                              color: Colors.black,
+                              color: Color(0xFFFFD60A), // Warm off-white (softer than pure white)
                               height: 0.9,
                               letterSpacing: -2,
                             ),
@@ -372,14 +389,13 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                             style: TextStyle(
                               fontSize: 24,
                               fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                              color: Color(0xFFFFFDF5), // Bright yellow accent
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-
                 ..._players.asMap().entries.map((entry) {
                   final index = entry.key;
                   final player = entry.value;
@@ -395,6 +411,10 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                         showingInput: player.showingInput,
                         onDelete: () => _removePlayer(index),
                         onInputToggle: (showing) {
+                          // When closing input, auto-name if empty
+                          if (!showing && player.controller.text.trim().isEmpty) {
+                            player.controller.text = 'Player ${index + 1}';
+                          }
                           setState(() => player.showingInput = showing);
                         },
                       ),
@@ -420,14 +440,14 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w600,
-                                  color: Colors.black,
+                                  color: Color(0xFFFFFDF5), // Warm off-white
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Container(
                                 height: 2,
                                 width: 80,
-                                color: Colors.black,
+                                color: const Color(0xFFFFD60A), // Yellow accent
                               ),
                             ],
                           ),
@@ -440,7 +460,6 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
-                              // Background layer - always present
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -450,7 +469,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                                         setState(() => _timerDuration -= 5);
                                       }
                                     },
-                                    icon: const Icon(Icons.remove, color: Colors.black),
+                                      icon: const Icon(Icons.remove, color: Color(0xFFFFFDF5)) // White
                                   ),
                                   SizedBox(
                                     width: 60,
@@ -460,7 +479,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.w600,
-                                        color: Colors.black,
+                                        color: Color(0xFFFFFFFF), // White
                                       ),
                                     ),
                                   ),
@@ -470,11 +489,10 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                                         setState(() => _timerDuration += 5);
                                       }
                                     },
-                                    icon: const Icon(Icons.add, color: Colors.black),
+                                    icon: const Icon(Icons.add, color: Color(0xFFFFFDF5)),
                                   ),
                                 ],
                               ),
-                              // Progress overlay
                               if (_isLongPressing)
                                 SizedBox(
                                   width: 60,
@@ -482,7 +500,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
                                   child: CircularProgressIndicator(
                                     value: _longPressController.value,
                                     strokeWidth: 3,
-                                    valueColor: const AlwaysStoppedAnimation(Colors.black),
+                                    valueColor: const AlwaysStoppedAnimation(Color(0xFFFFB703)), // Amber flame
                                     backgroundColor: Colors.white24,
                                   ),
                                 ),
@@ -492,16 +510,23 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
 
                         const SizedBox(height: 20),
 
-                        IgnorePointer(
-                          child: const Text(
-                            'Long press here to start',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
+// Animated pulsing text
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _pulseAnimation.value,
+                              child: const Text(
+                                'Long press here to start',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFFFFFDF5), // Warm off-white
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ),

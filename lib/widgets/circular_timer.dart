@@ -28,7 +28,9 @@ class _CircularTimerState extends State<CircularTimer> with SingleTickerProvider
     );
 
     _animation = Tween<double>(begin: 1.0, end: 0.0).animate(_controller)
-      ..addListener(() => setState(() {}));
+      ..addListener(() {
+        setState(() {});
+      });
 
     _controller.forward().then((_) => widget.onComplete());
   }
@@ -41,9 +43,9 @@ class _CircularTimerState extends State<CircularTimer> with SingleTickerProvider
 
   Color _getColor() {
     final remaining = (_animation.value * widget.durationSeconds).ceil();
-    if (remaining > 6) return Colors.white;
-    if (remaining > 3) return const Color(0xFFFFEB3B);
-    return const Color(0xFFFF5252);
+    if (remaining > 6) return Colors.green;
+    if (remaining > 3) return Colors.orange;
+    return Colors.red;
   }
 
   @override
@@ -51,13 +53,13 @@ class _CircularTimerState extends State<CircularTimer> with SingleTickerProvider
     final remaining = (_animation.value * widget.durationSeconds).ceil();
 
     return SizedBox(
-      width: 220,
-      height: 220,
+      width: 200,
+      height: 200,
       child: Stack(
         alignment: Alignment.center,
         children: [
           CustomPaint(
-            size: const Size(220, 220),
+            size: const Size(200, 200),
             painter: CircularTimerPainter(
               progress: _animation.value,
               color: _getColor(),
@@ -66,10 +68,9 @@ class _CircularTimerState extends State<CircularTimer> with SingleTickerProvider
           Text(
             '$remaining',
             style: TextStyle(
-              fontSize: 96,
-              fontWeight: FontWeight.w900,
+              fontSize: 80,
+              fontWeight: FontWeight.bold,
               color: _getColor(),
-              height: 1,
             ),
           ),
         ],
@@ -87,21 +88,20 @@ class CircularTimerPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 - 15;
+    final radius = size.width / 2 - 10;
 
-    // Background ring
+    // Background circle
     final bgPaint = Paint()
-      ..color = Colors.white.withOpacity(0.2)
+      ..color = Colors.white.withOpacity(0.1)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round;
+      ..strokeWidth = 20;
     canvas.drawCircle(center, radius, bgPaint);
 
     // Progress arc
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
+      ..strokeWidth = 20
       ..strokeCap = StrokeCap.round;
 
     canvas.drawArc(
