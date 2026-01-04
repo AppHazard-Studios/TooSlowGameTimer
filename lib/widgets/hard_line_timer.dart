@@ -48,6 +48,19 @@ class _HardLineTimerState extends State<HardLineTimer>
     super.dispose();
   }
 
+  double _getRotation() {
+    switch (widget.direction) {
+      case WipeDirection.down:
+        return 0; // Normal
+      case WipeDirection.up:
+        return 3.14159; // 180 degrees
+      case WipeDirection.left:
+        return -1.5708; // -90 degrees
+      case WipeDirection.right:
+        return 1.5708; // 90 degrees
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -55,23 +68,26 @@ class _HardLineTimerState extends State<HardLineTimer>
 
     return Stack(
       children: [
-        // Start color (being consumed)
+        // Start color (full screen)
         Positioned.fill(
           child: Container(color: widget.startColor),
         ),
 
-        // End color (consuming)
+        // End color (growing)
         _buildWipeOverlay(size),
 
-        // Countdown
+        // Countdown (rotated based on direction)
         Center(
-          child: Text(
-            '$remaining',
-            style: TextStyle(
-              fontSize: 300,
-              fontWeight: FontWeight.w900,
-              color: Colors.black.withOpacity(0.2),
-              height: 1,
+          child: Transform.rotate(
+            angle: _getRotation(),
+            child: Text(
+              '$remaining',
+              style: TextStyle(
+                fontSize: 300,
+                fontWeight: FontWeight.w900,
+                color: Colors.black.withOpacity(0.2),
+                height: 1,
+              ),
             ),
           ),
         ),
@@ -82,35 +98,39 @@ class _HardLineTimerState extends State<HardLineTimer>
   Widget _buildWipeOverlay(Size size) {
     switch (widget.direction) {
       case WipeDirection.down:
+      // Top to bottom
         return Positioned(
-          top: size.height * _animation.value,
+          top: 0,
           left: 0,
           right: 0,
-          bottom: 0,
+          height: size.height * _animation.value,
           child: Container(color: widget.endColor),
         );
       case WipeDirection.up:
+      // Bottom to top
         return Positioned(
-          top: 0,
+          bottom: 0,
           left: 0,
           right: 0,
-          bottom: size.height * (1 - _animation.value),
+          height: size.height * _animation.value,
           child: Container(color: widget.endColor),
         );
       case WipeDirection.left:
+      // Right to left
         return Positioned(
           top: 0,
-          left: 0,
-          right: size.width * (1 - _animation.value),
+          right: 0,
           bottom: 0,
+          width: size.width * _animation.value,
           child: Container(color: widget.endColor),
         );
       case WipeDirection.right:
+      // Left to right
         return Positioned(
           top: 0,
-          left: size.width * _animation.value,
-          right: 0,
+          left: 0,
           bottom: 0,
+          width: size.width * _animation.value,
           child: Container(color: widget.endColor),
         );
     }

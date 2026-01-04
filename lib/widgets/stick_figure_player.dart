@@ -58,27 +58,27 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                     size: const Size(60, 80),
                     painter: StickFigurePainter(color: widget.color),
                   ),
-                  Positioned(
-                    top: -8,
-                    right: -8,
-                    child: GestureDetector(
-                      onTap: () {
-                        widget.onDelete();
-                      },
-                      onTapDown: (_) {},
-                      onTapUp: (_) {},
-                      onTapCancel: () {},
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
-                      ),
-                    ),
-                  ),
+        Positioned(
+        top: -12, // Moved further away
+        right: -12, // Moved further away
+        child: GestureDetector(
+        onTap: () {
+        widget.onDelete();
+        },
+        onTapDown: (_) {},
+        onTapUp: (_) {},
+        onTapCancel: () {},
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+        color: widget.color, // Changed to player's color
+        shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
+        ),
+        ),
+        ),
                 ],
               ),
 

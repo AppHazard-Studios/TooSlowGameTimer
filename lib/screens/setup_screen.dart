@@ -62,8 +62,8 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     final tapX = details.localPosition.dx;
     final tapY = details.localPosition.dy;
 
-    // Don't add if tapping controls (only bottom 180px)
-    if (tapY > size.height - 180) return;
+    // Don't add if tapping controls (bottom 220px to be safe)
+    if (tapY > size.height - 220) return;
     if (tapY < 100) return;
 
     // Don't add new player if current player hasn't been named
@@ -82,7 +82,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     final widgetTop = tapY - 12;
 
     final relativeX = tapX / size.width;
-    final relativeY = (tapY - 100) / (size.height - 280);
+    final relativeY = (tapY - 100) / (size.height - 320);
 
     if (relativeX < 0.15 || relativeX > 0.85 || relativeY < 0.1 || relativeY > 0.75) {
       return;
@@ -299,22 +299,22 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
           child: SafeArea(
             child: Stack(
               children: [
-                Positioned(
-                  top: 20,
-                  left: 0,
-                  right: 0,
-                  child: IgnorePointer(
-                    child: Text(
-                      'Tap anywhere to add players',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white70,
-                      ),
-                    ),
+              Positioned(
+              top: 20,
+              left: 0,
+              right: 0,
+              child: IgnorePointer(
+                child: Text(
+                  'Tap anywhere to add players',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600, // Changed from w500
+                    color: Colors.white, // Changed from white70
                   ),
                 ),
+              ),
+            ),
 
                 if (_players.isEmpty)
                   Center(
