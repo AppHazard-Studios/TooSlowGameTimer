@@ -50,42 +50,59 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Stick figure
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  CustomPaint(
+              // Stick figure with delete button
+// Stick figure with delete button
+            SizedBox(
+            width: 100, // Increased width to accommodate offset button
+            height: 96,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Stick figure centered
+                Positioned(
+                  left: 20,
+                  top: 8,
+                  child: CustomPaint(
                     size: const Size(60, 80),
                     painter: StickFigurePainter(color: widget.color),
                   ),
-        Positioned(
-        top: -12, // Moved further away
-        right: -12, // Moved further away
-        child: GestureDetector(
-        onTap: () {
-        widget.onDelete();
-        },
-        onTapDown: (_) {},
-        onTapUp: (_) {},
-        onTapCancel: () {},
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-        color: widget.color, // Changed to player's color
-        shape: BoxShape.circle,
-        ),
-        child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
-        ),
-        ),
-        ),
-                ],
-              ),
+                ),
+                // Delete button - top right, away from head
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: GestureDetector(
+                    onTap: widget.onDelete,
+                    onTapDown: (_) {},
+                    onTapUp: (_) {},
+                    onTapCancel: () {},
+                    onLongPress: () {},
+                    onLongPressStart: (_) {},
+                    onLongPressEnd: (_) {},
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: widget.color,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
               const SizedBox(height: 8),
 
-              // Name below
-              if (widget.showingInput)
+// Name input/display - ALWAYS show white box if unnamed
+              if (widget.showingInput || widget.nameController.text.isEmpty)
                 Container(
                   width: 140,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -94,7 +111,8 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: widget.color, width: 2),
                   ),
-                  child: TextField(
+                  child: widget.showingInput
+                      ? TextField(
                     controller: widget.nameController,
                     autofocus: true,
                     textAlign: TextAlign.center,
@@ -105,10 +123,32 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
-                    onSubmitted: (_) => widget.onInputToggle(false),
+                    onSubmitted: (_) {
+                      if (widget.nameController.text.trim().isNotEmpty) {
+                        widget.onInputToggle(false);
+                      }
+                    },
+                  )
+                      : GestureDetector(
+                    onTap: () => widget.onInputToggle(true),
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      height: 24,
+                      child: Center(
+                        child: Text(
+                          'Tap to name',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: widget.color.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 )
               else
+              // Only show colored badge if actually named
                 GestureDetector(
                   onTap: () => widget.onInputToggle(true),
                   behavior: HitTestBehavior.opaque,
@@ -120,7 +160,7 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                       border: Border.all(color: widget.color, width: 2),
                     ),
                     child: Text(
-                      widget.nameController.text.isEmpty ? 'Tap to name' : widget.nameController.text,
+                      widget.nameController.text,
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w700,

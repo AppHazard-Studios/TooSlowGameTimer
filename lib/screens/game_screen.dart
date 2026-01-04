@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../models/game_state.dart';
 import '../services/tts_service.dart';
 import '../widgets/hard_line_timer.dart';
+import 'package:flutter/services.dart';
 
 class GameScreen extends StatefulWidget {
   final GameState gameState;
@@ -42,6 +43,8 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _handleTap() {
+    HapticFeedback.lightImpact(); // Light haptic on every tap
+
     if (_waitingForNextPlayer) {
       setState(() {
         _waitingForNextPlayer = false;
@@ -51,19 +54,21 @@ class _GameScreenState extends State<GameScreen> {
       setState(() {
         _waitingForNextPlayer = true;
         _timerKey++;
-        _currentDirection = _getNewRandomDirection(); // Store new direction when timer starts
+        _currentDirection = _getNewRandomDirection();
       });
     }
   }
 
   void _onTimerComplete() {
+    HapticFeedback.mediumImpact(); // Medium haptic when roasted
+
     final nextPlayerIndex = (widget.gameState.currentPlayerIndex + 1) % widget.gameState.players.length;
     final nextPlayer = widget.gameState.players[nextPlayerIndex];
     _tts.speakRoast(nextPlayer.name, widget.gameState.selectedMode);
 
     setState(() {
       _timerKey++;
-      _currentDirection = _getNewRandomDirection(); // New direction for next timer
+      _currentDirection = _getNewRandomDirection();
     });
   }
 

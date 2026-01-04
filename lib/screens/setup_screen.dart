@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:math' as math;
 import '../models/player.dart';
 import '../models/game_state.dart';
 import '../utils/constants.dart';
@@ -59,16 +58,13 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     if (_isLongPressing) return;
 
     final size = MediaQuery.of(context).size;
-    final tapX = details.localPosition.dx;
-    final tapY = details.localPosition.dy;
-
-    // Don't add if tapping controls (bottom 220px to be safe)
-    if (tapY > size.height - 220) return;
-    if (tapY < 100) return;
+    double tapX = details.localPosition.dx;
+    double tapY = details.localPosition.dy;
 
     // Don't add new player if current player hasn't been named
     if (_players.isNotEmpty && _players.last.controller.text.trim().isEmpty) {
       _showMessage('Name the current player first!');
+      HapticFeedback.mediumImpact();
       return;
     }
 
@@ -78,15 +74,41 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     }
     FocusScope.of(context).unfocus();
 
-    final widgetLeft = tapX - 70;
-    final widgetTop = tapY - 12;
+    // Define allowed area
+    final minY = 50.0;
+    final maxY = size.height - 230.0; // Keep away from controls
+    final figureHeight = 170.0;
+    final figureWidth = 140.0;
 
-    final relativeX = tapX / size.width;
-    final relativeY = (tapY - 100) / (size.height - 320);
+    // Clamp tap position to allowed area
+    if (tapY < minY) tapY = minY + 20;
+    if (tapY > maxY) tapY = maxY - 20;
 
-    if (relativeX < 0.15 || relativeX > 0.85 || relativeY < 0.1 || relativeY > 0.75) {
-      return;
+    // Calculate widget position so HEAD is at (clamped) tap point
+    double widgetLeft = tapX - 70;
+    double widgetTop = tapY - 12;
+
+    // Adjust horizontal bounds
+    if (widgetLeft < 10) widgetLeft = 10;
+    if (widgetLeft > size.width - figureWidth - 10) {
+      widgetLeft = size.width - figureWidth - 10;
     }
+
+    // Ensure bottom doesn't overlap controls
+    final maxBottom = size.height - 230;
+    if (widgetTop + figureHeight > maxBottom) {
+      widgetTop = maxBottom - figureHeight;
+    }
+
+    // Ensure not too close to top
+    if (widgetTop < minY) widgetTop = minY;
+
+    // Calculate relative position
+    final relativeX = tapX / size.width;
+    final relativeY = tapY / size.height;
+
+    // Haptic feedback
+    HapticFeedback.lightImpact();
 
     setState(() {
       _players.add(PlayerData(
@@ -104,7 +126,8 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
     final size = MediaQuery.of(context).size;
 
     // Only allow long press on bottom area
-    if (position.dy > size.height - 200) {
+    if (position.dy > size.height - 220) {
+      HapticFeedback.selectionClick(); // Light haptic
       setState(() => _isLongPressing = true);
       _longPressController.forward();
     }
@@ -123,6 +146,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   }
 
   void _removePlayer(int index) {
+    HapticFeedback.mediumImpact();
     setState(() {
       _players[index].controller.dispose();
       _players.removeAt(index);
@@ -146,6 +170,7 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   }
 
   void _cycleMode() {
+    HapticFeedback.selectionClick();
     setState(() {
       final currentIndex = GameConstants.modes.indexOf(_selectedMode);
       _selectedMode = GameConstants.modes[(currentIndex + 1) % GameConstants.modes.length];
@@ -153,8 +178,17 @@ class _SetupScreenState extends State<SetupScreen> with SingleTickerProviderStat
   }
 
   void _startGame() {
+    // Heavy haptic when game starts
+    HapticFeedback.heavyImpact();
+
+    // Auto-name unnamed players
+    for (int i = 0; i < _players.length; i++) {
+      if (_players[i].controller.text.trim().isEmpty) {
+        _players[i].controller.text = 'Player ${i + 1}';
+      }
+    }
+
     final players = _players
-        .where((p) => p.controller.text.trim().isNotEmpty)
         .map((p) => Player(
       name: p.controller.text.trim(),
       color: p.color,
