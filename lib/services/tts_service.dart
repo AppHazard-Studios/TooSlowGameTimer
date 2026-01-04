@@ -6,9 +6,12 @@ class TtsService {
   final FlutterTts _tts = FlutterTts();
   final Random _random = Random();
 
-  // Customizable properties
+  // Track recently used roasts per mode to avoid repetition
+  final Map<String, List<int>> _recentRoastIndices = {};
+  final int _historySize = 5; // Don't repeat last 5 roasts
+
   String language = 'en-US';
-  double speechRate = 0.46;
+  double speechRate = 0.48;
   double volume = 1.0;
   double pitch = 1.0;
 
@@ -23,7 +26,6 @@ class TtsService {
     await _tts.setPitch(pitch);
   }
 
-  // Update settings on the fly
   Future<void> updateSettings({
     String? newLanguage,
     double? newRate,
@@ -48,9 +50,52 @@ class TtsService {
     }
   }
 
+  int _getNextRoastIndex(String mode, int totalRoasts) {
+    // Initialize history for this mode if needed
+    _recentRoastIndices[mode] ??= [];
+
+    final recentIndices = _recentRoastIndices[mode]!;
+
+    // If we have fewer roasts than history size, just pick randomly from unused
+    if (totalRoasts <= _historySize) {
+      // Pick any index not in recent history
+      final availableIndices = List.generate(totalRoasts, (i) => i)
+          .where((i) => !recentIndices.contains(i))
+          .toList();
+
+      if (availableIndices.isEmpty) {
+        // Used all roasts, clear history and start fresh
+        recentIndices.clear();
+        return _random.nextInt(totalRoasts);
+      }
+
+      return availableIndices[_random.nextInt(availableIndices.length)];
+    }
+
+    // Pick from indices NOT in recent history
+    final availableIndices = List.generate(totalRoasts, (i) => i)
+        .where((i) => !recentIndices.contains(i))
+        .toList();
+
+    final selectedIndex = availableIndices[_random.nextInt(availableIndices.length)];
+
+    // Add to history
+    recentIndices.add(selectedIndex);
+
+    // Keep history size limited
+    if (recentIndices.length > _historySize) {
+      recentIndices.removeAt(0);
+    }
+
+    return selectedIndex;
+  }
+
   Future<void> speakRoast(String playerName, String mode) async {
     final templates = GameConstants.roastTemplates[mode] ?? GameConstants.roastTemplates['Banter']!;
-    final template = templates[_random.nextInt(templates.length)];
+
+    // Get a roast that hasn't been used recently
+    final roastIndex = _getNextRoastIndex(mode, templates.length);
+    final template = templates[roastIndex];
     final roast = template.replaceAll('{name}', playerName);
 
     await _tts.speak(roast);
@@ -60,17 +105,14 @@ class TtsService {
     await _tts.stop();
   }
 
-  // Get available voices (platform specific)
   Future<List<dynamic>> getVoices() async {
     return await _tts.getVoices;
   }
 
-  // Set specific voice
   Future<void> setVoice(Map<String, String> voice) async {
     await _tts.setVoice(voice);
   }
 
-  // Get available languages
   Future<List<dynamic>> getLanguages() async {
     return await _tts.getLanguages;
   }

@@ -5,6 +5,12 @@ class StickFigurePlayer extends StatefulWidget {
   final Color color;
   final TextEditingController nameController;
   final bool showingInput;
+  final int playerNumber;
+  final bool showOrderControls;
+  final bool canMoveUp;
+  final bool canMoveDown;
+  final VoidCallback onMoveUp;
+  final VoidCallback onMoveDown;
   final VoidCallback onDelete;
   final ValueChanged<bool> onInputToggle;
 
@@ -13,6 +19,12 @@ class StickFigurePlayer extends StatefulWidget {
     required this.color,
     required this.nameController,
     required this.showingInput,
+    required this.playerNumber,
+    required this.showOrderControls,
+    required this.canMoveUp,
+    required this.canMoveDown,
+    required this.onMoveUp,
+    required this.onMoveDown,
     required this.onDelete,
     required this.onInputToggle,
   });
@@ -50,58 +62,136 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Stick figure with delete button
-// Stick figure with delete button
-            SizedBox(
-            width: 100, // Increased width to accommodate offset button
-            height: 96,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                // Stick figure centered
-                Positioned(
-                  left: 20,
-                  top: 8,
-                  child: CustomPaint(
-                    size: const Size(60, 80),
-                    painter: StickFigurePainter(color: widget.color),
-                  ),
-                ),
-                // Delete button - top right, away from head
-                Positioned(
-                  top: -4,
-                  right: -4,
-                  child: GestureDetector(
-                    onTap: widget.onDelete,
-                    onTapDown: (_) {},
-                    onTapUp: (_) {},
-                    onTapCancel: () {},
-                    onLongPress: () {},
-                    onLongPressStart: (_) {},
-                    onLongPressEnd: (_) {},
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: widget.color,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: 16,
+              // Stick figure with controls
+              SizedBox(
+                width: 100,
+                height: 96,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Stick figure centered
+                    Positioned(
+                      left: 20,
+                      top: 8,
+                      child: CustomPaint(
+                        size: const Size(60, 80),
+                        painter: StickFigurePainter(color: widget.color),
                       ),
                     ),
-                  ),
+
+                    // Player number badge (top left)
+                    if (widget.showOrderControls)
+                      Positioned(
+                        top: -4,
+                        left: -4,
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: widget.color,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${widget.playerNumber}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Delete button (top right)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: GestureDetector(
+                        onTap: widget.onDelete,
+                        onTapDown: (_) {},
+                        onTapUp: (_) {},
+                        onTapCancel: () {},
+                        onLongPress: () {},
+                        onLongPressStart: (_) {},
+                        onLongPressEnd: (_) {},
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: widget.color,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Up arrow (bottom left)
+                    if (widget.showOrderControls && widget.canMoveUp)
+                      Positioned(
+                        bottom: -4,
+                        left: -4,
+                        child: GestureDetector(
+                          onTap: widget.onMoveUp,
+                          onTapDown: (_) {},
+                          onTapUp: (_) {},
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: widget.color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_upward_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                    // Down arrow (bottom right)
+                    if (widget.showOrderControls && widget.canMoveDown)
+                      Positioned(
+                        bottom: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: widget.onMoveDown,
+                          onTapDown: (_) {},
+                          onTapUp: (_) {},
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: widget.color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.arrow_downward_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
 
               const SizedBox(height: 8),
 
-// Name input/display - ALWAYS show white box if unnamed
+              // Name input/display
               if (widget.showingInput || widget.nameController.text.isEmpty)
                 Container(
                   width: 140,
@@ -148,7 +238,6 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                   ),
                 )
               else
-              // Only show colored badge if actually named
                 GestureDetector(
                   onTap: () => widget.onInputToggle(true),
                   behavior: HitTestBehavior.opaque,

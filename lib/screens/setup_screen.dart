@@ -68,6 +68,28 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
+  void _movePlayerUp(int index) {
+    if (index == 0) return; // Already at top
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      final temp = _players[index];
+      _players[index] = _players[index - 1];
+      _players[index - 1] = temp;
+    });
+  }
+
+  void _movePlayerDown(int index) {
+    if (index == _players.length - 1) return; // Already at bottom
+
+    HapticFeedback.selectionClick();
+    setState(() {
+      final temp = _players[index];
+      _players[index] = _players[index + 1];
+      _players[index + 1] = temp;
+    });
+  }
+
   void _handleTapDown(TapDownDetails details) {
     if (_isLongPressing) return;
 
@@ -409,6 +431,12 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                         color: player.color,
                         nameController: player.controller,
                         showingInput: player.showingInput,
+                        playerNumber: index + 1, // ADD THIS
+                        showOrderControls: _players.length > 1, // ADD THIS
+                        canMoveUp: index > 0, // ADD THIS
+                        canMoveDown: index < _players.length - 1, // ADD THIS
+                        onMoveUp: () => _movePlayerUp(index), // ADD THIS
+                        onMoveDown: () => _movePlayerDown(index), // ADD THIS
                         onDelete: () => _removePlayer(index),
                         onInputToggle: (showing) {
                           // When closing input, auto-name if empty
