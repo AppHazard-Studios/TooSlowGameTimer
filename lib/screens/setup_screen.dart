@@ -195,7 +195,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       const Color(0xFFFFD60A), // Bright yellow (complementary)
       const Color(0xFF06FFA5), // Bright mint green
       const Color(0xFF00D9FF), // Neon cyan
-      const Color(0xFFFFFFFF), // Pure white (high contrast)
       const Color(0xFF4CC9F0), // Bright sky blue
       const Color(0xFF7209B7), // Deep purple
       const Color(0xFFB5FF00), // Lime green
