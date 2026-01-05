@@ -18,9 +18,10 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   String _selectedMode = GameConstants.modes[1];
   int _timerDuration = GameConstants.defaultTimerSeconds;
   bool _isLongPressing = false;
+  bool _keyboardWasOpen = false;
   late AnimationController _longPressController;
-  late AnimationController _pulseController; // ADD THIS
-  late Animation<double> _pulseAnimation; // ADD THIS
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   @override
   void initState() {
@@ -37,7 +38,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       setState(() {});
     });
 
-    // ADD PULSE ANIMATION
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -51,7 +51,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reset animation when returning to this screen
     if (_longPressController.value > 0) {
       _longPressController.reset();
       setState(() => _isLongPressing = false);
@@ -61,7 +60,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     _longPressController.dispose();
-    _pulseController.dispose(); // ADD THIS
+    _pulseController.dispose();
     for (var player in _players) {
       player.controller.dispose();
     }
@@ -69,7 +68,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _movePlayerUp(int index) {
-    if (index == 0) return; // Already at top
+    if (index == 0) return;
 
     HapticFeedback.selectionClick();
     setState(() {
@@ -80,7 +79,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _movePlayerDown(int index) {
-    if (index == _players.length - 1) return; // Already at bottom
+    if (index == _players.length - 1) return;
 
     HapticFeedback.selectionClick();
     setState(() {
@@ -91,14 +90,22 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _handleTapDown(TapDownDetails details) {
-    if (_isLongPressing) return;
-
     final size = MediaQuery.of(context).size;
     double tapX = details.localPosition.dx;
     double tapY = details.localPosition.dy;
 
-    // Block bottom area
-    if (tapY > size.height - 240) return;
+    // Bottom area - start long press animation immediately
+    if (tapY > size.height - 240) {
+      if (!_isLongPressing) {
+        HapticFeedback.heavyImpact();
+        setState(() => _isLongPressing = true);
+        _longPressController.forward();
+      }
+      return;
+    }
+
+    // Block if already in long press mode
+    if (_isLongPressing) return;
 
     // Don't add new player if current player hasn't been named
     if (_players.isNotEmpty && _players.last.controller.text.trim().isEmpty) {
@@ -110,7 +117,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     // Close all existing name inputs AND auto-name if empty
     for (int i = 0; i < _players.length; i++) {
       if (_players[i].showingInput && _players[i].controller.text.trim().isEmpty) {
-        _players[i].controller.text = 'Player ${i + 1}'; // Auto-assign
+        _players[i].controller.text = 'Player ${i + 1}';
       }
       _players[i].showingInput = false;
     }
@@ -120,14 +127,12 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     if (tapY < 50) tapY = 50 + 20;
     if (tapY > size.height - 230 - 20) tapY = size.height - 250;
 
-    // Figure dimensions
     final figureHeight = 170.0;
     final figureWidth = 140.0;
 
     double widgetLeft = tapX - 70;
     double widgetTop = tapY - 12;
 
-    // Adjust bounds
     if (widgetLeft < 10) widgetLeft = 10;
     if (widgetLeft > size.width - figureWidth - 10) {
       widgetLeft = size.width - figureWidth - 10;
@@ -143,7 +148,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     final relativeX = tapX / size.width;
     final relativeY = tapY / size.height;
 
-    HapticFeedback.lightImpact();
+    HapticFeedback.mediumImpact();
 
     setState(() {
       _players.add(PlayerData(
@@ -156,29 +161,48 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     });
   }
 
-  void _handleLongPressStart(LongPressStartDetails details) {
-    final position = details.localPosition;
-    final size = MediaQuery.of(context).size;
-
-    // Only allow long press on bottom area AND prevent it from triggering tap
-    if (position.dy > size.height - 220) {
-      HapticFeedback.selectionClick();
-      setState(() => _isLongPressing = true);
-      _longPressController.forward();
-      // Don't call _handleTapDown - long press is separate
+  void _handleTapUp(TapUpDetails details) {
+    if (_isLongPressing) {
+      if (!_longPressController.isCompleted) {
+        _longPressController.reverse();
+      }
+      setState(() => _isLongPressing = false);
     }
   }
 
-  void _handleLongPressEnd(LongPressEndDetails details) {
-    if (!_longPressController.isCompleted) {
+  void _handleTapCancel() {
+    if (_isLongPressing) {
       _longPressController.reverse();
+      setState(() => _isLongPressing = false);
     }
-    setState(() => _isLongPressing = false);
   }
 
-  void _handleLongPressCancel() {
-    _longPressController.reverse();
-    setState(() => _isLongPressing = false);
+  void _handleOverlayTap() {
+    // Find the player being named
+    int? activeIndex;
+    for (int i = 0; i < _players.length; i++) {
+      if (_players[i].showingInput) {
+        activeIndex = i;
+        break;
+      }
+    }
+
+    // If player has no name yet, block dismissal
+    if (activeIndex != null && _players[activeIndex].controller.text.trim().isEmpty) {
+      _showMessage('Name the current player first!');
+      HapticFeedback.mediumImpact();
+      return;
+    }
+
+    // Otherwise, close keyboard and dismiss
+    FocusScope.of(context).unfocus();
+    setState(() {
+      for (var player in _players) {
+        if (player.showingInput) {
+          player.showingInput = false;
+        }
+      }
+    });
   }
 
   void _removePlayer(int index) {
@@ -191,24 +215,23 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
   Color _getPlayerColor(int index) {
     final colors = [
-      // HIGH CONTRAST on hot pink
-      const Color(0xFFFFD60A), // Bright yellow (complementary)
-      const Color(0xFF06FFA5), // Bright mint green
-      const Color(0xFF00D9FF), // Neon cyan
-      const Color(0xFF4CC9F0), // Bright sky blue
-      const Color(0xFF7209B7), // Deep purple
-      const Color(0xFFB5FF00), // Lime green
-      const Color(0xFFFFA500), // Bright orange
-      const Color(0xFF00FFFF), // Cyan
-      const Color(0xFF9D4EDD), // Lavender purple
-      const Color(0xFFFFE066), // Golden yellow
-      const Color(0xFF00F5A0), // Aqua green
+      const Color(0xFFFFD60A),
+      const Color(0xFF06FFA5),
+      const Color(0xFF00D9FF),
+      const Color(0xFF4CC9F0),
+      const Color(0xFF7209B7),
+      const Color(0xFFB5FF00),
+      const Color(0xFFFFA500),
+      const Color(0xFF00FFFF),
+      const Color(0xFF9D4EDD),
+      const Color(0xFFFFE066),
+      const Color(0xFF00F5A0),
     ];
     return colors[index % colors.length];
   }
 
   void _cycleMode() {
-    HapticFeedback.selectionClick();
+    HapticFeedback.mediumImpact();
     setState(() {
       final currentIndex = GameConstants.modes.indexOf(_selectedMode);
       _selectedMode = GameConstants.modes[(currentIndex + 1) % GameConstants.modes.length];
@@ -216,10 +239,8 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _startGame() {
-    // Heavy haptic when game starts
     HapticFeedback.heavyImpact();
 
-    // Auto-name unnamed players
     for (int i = 0; i < _players.length; i++) {
       if (_players[i].controller.text.trim().isEmpty) {
         _players[i].controller.text = 'Player ${i + 1}';
@@ -297,7 +318,10 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => Navigator.pop(context, false),
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        Navigator.pop(context, false);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
@@ -319,7 +343,10 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                   const SizedBox(width: 12),
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => Navigator.pop(context, true),
+                      onTap: () {
+                        HapticFeedback.mediumImpact();
+                        Navigator.pop(context, true);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
@@ -350,6 +377,44 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final padding = MediaQuery.of(context).padding;
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+
+    // Track keyboard state transitions
+    if (isKeyboardOpen) {
+      _keyboardWasOpen = true;
+    } else if (_keyboardWasOpen && !isKeyboardOpen) {
+      // Keyboard just closed - reset after this frame
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _keyboardWasOpen = false);
+      });
+    }
+
+    // Find active naming player
+    int? activeNamingIndex;
+    if (isKeyboardOpen) {
+      for (int i = 0; i < _players.length; i++) {
+        if (_players[i].showingInput) {
+          activeNamingIndex = i;
+          break;
+        }
+      }
+    }
+
+    final isNamingMode = isKeyboardOpen && activeNamingIndex != null;
+
+    // Title should be at center ONLY when: empty + keyboard fully closed + not transitioning
+    final shouldBeAtCenter = _players.isEmpty && !isKeyboardOpen && !_keyboardWasOpen;
+
+    // Calculate positions
+    final safeHeight = size.height - padding.top - padding.bottom;
+    final titleCenterTop = padding.top + (safeHeight * 0.35);
+    final visibleHeight = safeHeight - keyboardHeight;
+    final centerX = size.width / 2 - 70;
+    final centerY = visibleHeight / 2 - 85 + padding.top;
+
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
@@ -361,206 +426,238 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFFF006E), // Deep navy blue
+        backgroundColor: const Color(0xFFFF006E),
+        resizeToAvoidBottomInset: false,
         body: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapDown: _handleTapDown,
-          onLongPressStart: _handleLongPressStart,
-          onLongPressEnd: _handleLongPressEnd,
-          onLongPressCancel: _handleLongPressCancel,
-          child: SafeArea(
-            child: Stack(
-              children: [
-                Positioned(
-                  top: 20,
-                  left: 0,
-                  right: 0,
-                  child: IgnorePointer(
-                    child: Text(
-                      'Tap anywhere to add players',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFFFFDF5), // Warm off-white
+          onTapDown: isKeyboardOpen ? null : _handleTapDown,
+          onTapUp: isKeyboardOpen ? null : _handleTapUp,
+          onTapCancel: isKeyboardOpen ? null : _handleTapCancel,
+          child: Stack(
+            children: [
+              // Layer 1: Instruction text
+              Positioned(
+                top: 20 + padding.top,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Text(
+                    'Tap anywhere to add players',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFFFFDF5),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Layer 2: Bottom controls
+              Positioned(
+                bottom: padding.bottom,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _cycleMode,
+                        child: Column(
+                          children: [
+                            Text(
+                              _selectedMode,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFFFFDF5),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              height: 2,
+                              width: 80,
+                              color: const Color(0xFFFFD60A),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        height: 60,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                IconButton(
+                                  onPressed: () {
+                                    if (_timerDuration > 5) {
+                                      HapticFeedback.selectionClick();
+                                      setState(() => _timerDuration -= 5);
+                                    }
+                                  },
+                                  icon: const Icon(Icons.remove, color: Color(0xFFFFFDF5)),
+                                ),
+                                SizedBox(
+                                  width: 60,
+                                  child: Text(
+                                    '${_timerDuration}s',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFFFFFFFF),
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: () {
+                                    if (_timerDuration < 30) {
+                                      HapticFeedback.selectionClick();
+                                      setState(() => _timerDuration += 5);
+                                    }
+                                  },
+                                  icon: const Icon(Icons.add, color: Color(0xFFFFFDF5)),
+                                ),
+                              ],
+                            ),
+                            if (_isLongPressing)
+                              SizedBox(
+                                width: 60,
+                                height: 60,
+                                child: CircularProgressIndicator(
+                                  value: _longPressController.value,
+                                  strokeWidth: 3,
+                                  valueColor: const AlwaysStoppedAnimation(Color(0xFFFFB703)),
+                                  backgroundColor: Colors.white24,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      AnimatedBuilder(
+                        animation: _pulseAnimation,
+                        builder: (context, child) {
+                          return Transform.scale(
+                            scale: _pulseAnimation.value,
+                            child: const Text(
+                              'Long press here to start',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFFFFFDF5),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Layer 3: Overlay
+              if (isNamingMode)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleOverlayTap,
+                    child: Container(
+                      color: const Color(0xFF000000).withOpacity(0.5),
                     ),
                   ),
                 ),
 
-                if (_players.isEmpty)
-                  Center(
-                    child: IgnorePointer(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Text(
-                            'TOO SLOW',
-                            style: TextStyle(
-                              fontSize: 64,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFFFFD60A), // Warm off-white (softer than pure white)
-                              height: 0.9,
-                              letterSpacing: -2,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'GAME TIMER',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFFFFFDF5), // Bright yellow accent
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ..._players.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final player = entry.value;
-                  return Positioned(
-                    left: player.absolutePosition.dx,
-                    top: player.absolutePosition.dy,
-                    child: GestureDetector(
-                      onTap: () {},
-                      behavior: HitTestBehavior.opaque,
-                      child: StickFigurePlayer(
-                        color: player.color,
-                        nameController: player.controller,
-                        showingInput: player.showingInput,
-                        playerNumber: index + 1, // ADD THIS
-                        showOrderControls: _players.length > 1, // ADD THIS
-                        canMoveUp: index > 0, // ADD THIS
-                        canMoveDown: index < _players.length - 1, // ADD THIS
-                        onMoveUp: () => _movePlayerUp(index), // ADD THIS
-                        onMoveDown: () => _movePlayerDown(index), // ADD THIS
-                        onDelete: () => _removePlayer(index),
-                        onInputToggle: (showing) {
-                          // When closing input, auto-name if empty
-                          if (!showing && player.controller.text.trim().isEmpty) {
-                            player.controller.text = 'Player ${index + 1}';
-                          }
-                          setState(() => player.showingInput = showing);
-                        },
-                      ),
-                    ),
-                  );
-                }),
-
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
+              // Layer 4: Title
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeInOut,
+                top: shouldBeAtCenter ? titleCenterTop : 60 + padding.top,
+                left: 0,
+                right: 0,
+                child: IgnorePointer(
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        GestureDetector(
-                          onTap: _cycleMode,
-                          child: Column(
-                            children: [
-                              Text(
-                                _selectedMode,
-                                style: const TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFFFFFDF5), // Warm off-white
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Container(
-                                height: 2,
-                                width: 80,
-                                color: const Color(0xFFFFD60A), // Yellow accent
-                              ),
-                            ],
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeInOut,
+                          style: TextStyle(
+                            fontSize: shouldBeAtCenter ? 64 : 32,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFFFFD60A),
+                            height: 0.9,
+                            letterSpacing: -2,
                           ),
+                          child: const Text('TOO SLOW'),
                         ),
-
-                        const SizedBox(height: 20),
-
-                        SizedBox(
-                          height: 60,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  IconButton(
-                                    onPressed: () {
-                                      if (_timerDuration > 5) {
-                                        setState(() => _timerDuration -= 5);
-                                      }
-                                    },
-                                      icon: const Icon(Icons.remove, color: Color(0xFFFFFDF5)) // White
-                                  ),
-                                  SizedBox(
-                                    width: 60,
-                                    child: Text(
-                                      '${_timerDuration}s',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFFFFFFFF), // White
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    onPressed: () {
-                                      if (_timerDuration < 30) {
-                                        setState(() => _timerDuration += 5);
-                                      }
-                                    },
-                                    icon: const Icon(Icons.add, color: Color(0xFFFFFDF5)),
-                                  ),
-                                ],
-                              ),
-                              if (_isLongPressing)
-                                SizedBox(
-                                  width: 60,
-                                  height: 60,
-                                  child: CircularProgressIndicator(
-                                    value: _longPressController.value,
-                                    strokeWidth: 3,
-                                    valueColor: const AlwaysStoppedAnimation(Color(0xFFFFB703)), // Amber flame
-                                    backgroundColor: Colors.white24,
-                                  ),
-                                ),
-                            ],
+                        SizedBox(height: shouldBeAtCenter ? 8 : 4),
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeInOut,
+                          style: TextStyle(
+                            fontSize: shouldBeAtCenter ? 24 : 16,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFFFFFDF5),
                           ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-// Animated pulsing text
-                        AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return Transform.scale(
-                              scale: _pulseAnimation.value,
-                              child: const Text(
-                                'Long press here to start',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFFFFFDF5), // Warm off-white
-                                ),
-                              ),
-                            );
-                          },
+                          child: const Text('GAME TIMER'),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              // Layer 5: Players
+              ..._players.asMap().entries.map((entry) {
+                final index = entry.key;
+                final player = entry.value;
+                final isThisPlayerNaming = isNamingMode && (index == activeNamingIndex);
+
+                final targetPosition = isThisPlayerNaming
+                    ? Offset(centerX, centerY)
+                    : Offset(
+                  player.absolutePosition.dx,
+                  player.absolutePosition.dy + padding.top,
+                );
+
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  left: targetPosition.dx,
+                  top: targetPosition.dy,
+                  child: GestureDetector(
+                    onTap: () {},
+                    behavior: HitTestBehavior.opaque,
+                    child: StickFigurePlayer(
+                      color: player.color,
+                      nameController: player.controller,
+                      showingInput: player.showingInput,
+                      playerNumber: index + 1,
+                      showOrderControls: _players.length > 1,
+                      canMoveUp: index > 0,
+                      canMoveDown: index < _players.length - 1,
+                      onMoveUp: () => _movePlayerUp(index),
+                      onMoveDown: () => _movePlayerDown(index),
+                      onDelete: () => _removePlayer(index),
+                      onInputToggle: (showing) {
+                        if (!showing && player.controller.text.trim().isEmpty) {
+                          player.controller.text = 'Player ${index + 1}';
+                        }
+                        setState(() => player.showingInput = showing);
+                      },
+                    ),
+                  ),
+                );
+              }),
+            ],
           ),
         ),
       ),

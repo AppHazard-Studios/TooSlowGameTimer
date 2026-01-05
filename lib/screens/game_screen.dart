@@ -43,7 +43,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _handleTap() {
-    HapticFeedback.lightImpact(); // Light haptic on every tap
+    HapticFeedback.mediumImpact(); // Changed from lightImpact
 
     if (_waitingForNextPlayer) {
       setState(() {
@@ -60,7 +60,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   void _onTimerComplete() {
-    HapticFeedback.mediumImpact(); // Medium haptic when roasted
+    HapticFeedback.heavyImpact(); // Changed from mediumImpact
 
     final nextPlayerIndex = (widget.gameState.currentPlayerIndex + 1) % widget.gameState.players.length;
     final nextPlayer = widget.gameState.players[nextPlayerIndex];
@@ -96,7 +96,10 @@ class _GameScreenState extends State<GameScreen> {
                 children: [
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => Navigator.pop(context, false),
+                      onTap: () {
+                        HapticFeedback.lightImpact(); // Added
+                        Navigator.pop(context, false);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
@@ -118,7 +121,10 @@ class _GameScreenState extends State<GameScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: GestureDetector(
-                      onTap: () => Navigator.pop(context, true),
+                      onTap: () {
+                        HapticFeedback.mediumImpact(); // Added
+                        Navigator.pop(context, true);
+                      },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
