@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_tts: ^4.0.2
   google_fonts: ^6.1.0
+  audioplayers: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -47,6 +48,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  # sherpa_onnx: ^1.12.14         # NEW
+  path_provider: ^2.1.1         # NEW - for device storage paths
+  shared_preferences: ^2.2.2
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -89,3 +93,7 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+assets:
+  - assets/models/sherpa/en_US_lessac_medium.onnx
+  - assets/models/sherpa/en_US_lessac_medium.onnx.json
+  - assets/models/sherpa/tokens.txt
