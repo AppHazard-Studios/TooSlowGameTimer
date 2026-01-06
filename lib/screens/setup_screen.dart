@@ -4,6 +4,7 @@ import '../models/player.dart';
 import '../models/game_state.dart';
 import '../utils/constants.dart';
 import '../widgets/stick_figure_player.dart';
+import '../services/preferences_service.dart';
 import 'game_screen.dart';
 
 class SetupScreen extends StatefulWidget {
@@ -15,18 +16,25 @@ class SetupScreen extends StatefulWidget {
 
 class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin {
   final List<PlayerData> _players = [];
+
   String _selectedMode = GameConstants.modes[1];
   int _timerDuration = GameConstants.defaultTimerSeconds;
   bool _isLongPressing = false;
-  bool _keyboardWasOpen = false;
+  bool _showingSettings = false;
+  String _currentTtsProvider = 'sherpa';
+
   late AnimationController _longPressController;
   late AnimationController _pulseController;
+  late AnimationController _settingsOverlayController;
   late Animation<double> _pulseAnimation;
+  late Animation<double> _settingsOverlayAnimation;
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+
+    _currentTtsProvider = PreferencesService().getTtsProvider();
 
     _longPressController = AnimationController(
       vsync: this,
@@ -46,6 +54,15 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     _pulseAnimation = Tween<double>(begin: 0.95, end: 1.15).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
+
+    _settingsOverlayController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+
+    _settingsOverlayAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _settingsOverlayController, curve: Curves.easeOut),
+    );
   }
 
   @override
@@ -61,10 +78,38 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   void dispose() {
     _longPressController.dispose();
     _pulseController.dispose();
+    _settingsOverlayController.dispose();
     for (var player in _players) {
       player.controller.dispose();
     }
     super.dispose();
+  }
+
+  void _toggleSettings() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _showingSettings = !_showingSettings;
+      if (_showingSettings) {
+        _settingsOverlayController.forward();
+      } else {
+        _settingsOverlayController.reverse();
+      }
+    });
+  }
+
+  void _handleSettingsOverlayTap() {
+    HapticFeedback.lightImpact();
+    _settingsOverlayController.reverse().then((_) {
+      if (mounted) {
+        setState(() => _showingSettings = false);
+      }
+    });
+  }
+
+  Future<void> _setTtsProvider(String provider) async {
+    HapticFeedback.selectionClick();
+    await PreferencesService().setTtsProvider(provider);
+    setState(() => _currentTtsProvider = provider);
   }
 
   void _movePlayerUp(int index) {
@@ -90,11 +135,12 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _handleTapDown(TapDownDetails details) {
+    if (_showingSettings) return;
+
     final size = MediaQuery.of(context).size;
     double tapX = details.localPosition.dx;
     double tapY = details.localPosition.dy;
 
-    // Bottom area - start long press animation immediately
     if (tapY > size.height - 240) {
       if (!_isLongPressing) {
         HapticFeedback.heavyImpact();
@@ -104,17 +150,14 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       return;
     }
 
-    // Block if already in long press mode
     if (_isLongPressing) return;
 
-    // Don't add new player if current player hasn't been named
     if (_players.isNotEmpty && _players.last.controller.text.trim().isEmpty) {
       _showMessage('Name the current player first!');
       HapticFeedback.mediumImpact();
       return;
     }
 
-    // Close all existing name inputs AND auto-name if empty
     for (int i = 0; i < _players.length; i++) {
       if (_players[i].showingInput && _players[i].controller.text.trim().isEmpty) {
         _players[i].controller.text = 'Player ${i + 1}';
@@ -123,7 +166,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     }
     FocusScope.of(context).unfocus();
 
-    // Clamp tap position
     if (tapY < 50) tapY = 50 + 20;
     if (tapY > size.height - 230 - 20) tapY = size.height - 250;
 
@@ -178,7 +220,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   }
 
   void _handleOverlayTap() {
-    // Find the player being named
     int? activeIndex;
     for (int i = 0; i < _players.length; i++) {
       if (_players[i].showingInput) {
@@ -187,14 +228,12 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       }
     }
 
-    // If player has no name yet, block dismissal
     if (activeIndex != null && _players[activeIndex].controller.text.trim().isEmpty) {
       _showMessage('Name the current player first!');
       HapticFeedback.mediumImpact();
       return;
     }
 
-    // Otherwise, close keyboard and dismiss
     FocusScope.of(context).unfocus();
     setState(() {
       for (var player in _players) {
@@ -382,16 +421,6 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = keyboardHeight > 0;
 
-    // Track keyboard state transitions
-    if (isKeyboardOpen) {
-      _keyboardWasOpen = true;
-    } else if (_keyboardWasOpen && !isKeyboardOpen) {
-      // Keyboard just closed - reset after this frame
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _keyboardWasOpen = false);
-      });
-    }
-
     // Find active naming player
     int? activeNamingIndex;
     if (isKeyboardOpen) {
@@ -405,15 +434,14 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
     final isNamingMode = isKeyboardOpen && activeNamingIndex != null;
 
-    // Title should be at center ONLY when: empty + keyboard fully closed + not transitioning
-    final shouldBeAtCenter = _players.isEmpty && !isKeyboardOpen && !_keyboardWasOpen;
+    // Title centering: SIMPLE - empty screen = center, has players = top
+    final shouldBeAtCenter = _players.isEmpty;
 
-    // Calculate positions
+    // FIXED positions - no keyboard calculations
     final safeHeight = size.height - padding.top - padding.bottom;
     final titleCenterTop = padding.top + (safeHeight * 0.35);
-    final visibleHeight = safeHeight - keyboardHeight;
     final centerX = size.width / 2 - 70;
-    final centerY = visibleHeight / 2 - 85 + padding.top;
+    final centerY = size.height / 2 - 85;
 
     return PopScope(
       canPop: false,
@@ -430,9 +458,9 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
         resizeToAvoidBottomInset: false,
         body: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapDown: isKeyboardOpen ? null : _handleTapDown,
-          onTapUp: isKeyboardOpen ? null : _handleTapUp,
-          onTapCancel: isKeyboardOpen ? null : _handleTapCancel,
+          onTapDown: (isKeyboardOpen || _showingSettings) ? null : _handleTapDown,
+          onTapUp: (isKeyboardOpen || _showingSettings) ? null : _handleTapUp,
+          onTapCancel: (isKeyboardOpen || _showingSettings) ? null : _handleTapCancel,
           child: Stack(
             children: [
               // Layer 1: Instruction text
@@ -562,7 +590,44 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                 ),
               ),
 
-              // Layer 3: Overlay
+              // Layer 3: Players (not being named)
+              // Layer 3: Players (not being named AND not newly created)
+              ..._players.asMap().entries.where((entry) {
+                final player = entry.value;
+                // Don't render if being named OR if it's a new player waiting for keyboard
+                return !isNamingMode && !player.showingInput;
+              }).map((entry) {
+                final index = entry.key;
+                final player = entry.value;
+
+                return AnimatedPositioned(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  left: player.absolutePosition.dx,
+                  top: player.absolutePosition.dy + padding.top,
+                  child: GestureDetector(
+                    onTap: () {},
+                    behavior: HitTestBehavior.opaque,
+                    child: StickFigurePlayer(
+                      color: player.color,
+                      nameController: player.controller,
+                      showingInput: false,
+                      playerNumber: index + 1,
+                      showOrderControls: _players.length > 1,
+                      canMoveUp: index > 0,
+                      canMoveDown: index < _players.length - 1,
+                      onMoveUp: () => _movePlayerUp(index),
+                      onMoveDown: () => _movePlayerDown(index),
+                      onDelete: () => _removePlayer(index),
+                      onInputToggle: (showing) {
+                        setState(() => player.showingInput = showing);
+                      },
+                    ),
+                  ),
+                );
+              }),
+
+              // Layer 4: Naming overlay
               if (isNamingMode)
                 Positioned.fill(
                   child: GestureDetector(
@@ -574,7 +639,46 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                   ),
                 ),
 
-              // Layer 4: Title
+              // Layer 5: Settings overlay (animated, tappable to close)
+              if (_showingSettings || _settingsOverlayController.value > 0)
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _handleSettingsOverlayTap,
+                    child: AnimatedBuilder(
+                      animation: _settingsOverlayAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          color: Color(0xFF000000).withOpacity(0.5 * _settingsOverlayAnimation.value),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+              // Layer 6: Settings cog (always visible)
+              Positioned(
+                top: 20 + padding.top,
+                right: 20,
+                child: GestureDetector(
+                  onTap: _toggleSettings,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.settings,
+                      size: 28,
+                      color: Color(0xFFFFFDF5),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Layer 7: Title (above naming overlay)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 350),
                 curve: Curves.easeInOut,
@@ -615,48 +719,218 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                 ),
               ),
 
-              // Layer 5: Players
-              ..._players.asMap().entries.map((entry) {
-                final index = entry.key;
-                final player = entry.value;
-                final isThisPlayerNaming = isNamingMode && (index == activeNamingIndex);
-
-                final targetPosition = isThisPlayerNaming
-                    ? Offset(centerX, centerY)
-                    : Offset(
-                  player.absolutePosition.dx,
-                  player.absolutePosition.dy + padding.top,
-                );
-
-                return AnimatedPositioned(
+              // Layer 8: Active naming player (above naming overlay, FIXED center)
+// Layer 8: Active naming player (above naming overlay, FIXED center)
+// Layer 8: Active naming player OR newly created player
+              if (isNamingMode && activeNamingIndex != null)
+                AnimatedPositioned(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
-                  left: targetPosition.dx,
-                  top: targetPosition.dy,
+                  left: centerX,
+                  top: centerY,
                   child: GestureDetector(
                     onTap: () {},
                     behavior: HitTestBehavior.opaque,
                     child: StickFigurePlayer(
-                      color: player.color,
-                      nameController: player.controller,
-                      showingInput: player.showingInput,
-                      playerNumber: index + 1,
-                      showOrderControls: _players.length > 1,
-                      canMoveUp: index > 0,
-                      canMoveDown: index < _players.length - 1,
-                      onMoveUp: () => _movePlayerUp(index),
-                      onMoveDown: () => _movePlayerDown(index),
-                      onDelete: () => _removePlayer(index),
+                      color: _players[activeNamingIndex!].color,
+                      nameController: _players[activeNamingIndex!].controller,
+                      showingInput: _players[activeNamingIndex!].showingInput,
+                      playerNumber: activeNamingIndex! + 1,
+                      showOrderControls: false, // NO controls while naming
+                      canMoveUp: false,
+                      canMoveDown: false,
+                      onMoveUp: () {},
+                      onMoveDown: () {},
+                      onDelete: () => _removePlayer(activeNamingIndex!),
                       onInputToggle: (showing) {
-                        if (!showing && player.controller.text.trim().isEmpty) {
-                          player.controller.text = 'Player ${index + 1}';
+                        if (!showing && _players[activeNamingIndex!].controller.text.trim().isEmpty) {
+                          _players[activeNamingIndex!].controller.text = 'Player ${activeNamingIndex! + 1}';
                         }
-                        setState(() => player.showingInput = showing);
+                        setState(() => _players[activeNamingIndex!].showingInput = showing);
                       },
                     ),
                   ),
-                );
-              }),
+                )
+              // Show player at center even before keyboard opens if it's waiting for input
+              else // Layer 8: Active naming player (centered)
+                if (_players.isNotEmpty && _players.any((p) => p.showingInput))
+                  Builder(
+                    builder: (context) {
+                      // Find the player being named
+                      final namingIndex = _players.indexWhere((p) => p.showingInput);
+                      if (namingIndex == -1) return SizedBox.shrink();
+
+                      return AnimatedPositioned(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        left: centerX,
+                        top: centerY,
+                        child: GestureDetector(
+                          onTap: () {},
+                          behavior: HitTestBehavior.opaque,
+                          child: StickFigurePlayer(
+                            color: _players[namingIndex].color,
+                            nameController: _players[namingIndex].controller,
+                            showingInput: _players[namingIndex].showingInput,
+                            playerNumber: namingIndex + 1,
+                            showOrderControls: false,
+                            canMoveUp: false,
+                            canMoveDown: false,
+                            onMoveUp: () {},
+                            onMoveDown: () {},
+                            onDelete: _players.length == 1 ? null : () => _removePlayer(namingIndex),
+                            onInputToggle: (showing) {
+                              if (!showing && _players[namingIndex].controller.text.trim().isEmpty) {
+                                _players[namingIndex].controller.text = 'Player ${namingIndex + 1}';
+                              }
+                              setState(() => _players[namingIndex].showingInput = showing);
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              // Layer 9: Settings dropdown (above overlay, blocks inner taps only)
+              if (_showingSettings)
+                Positioned(
+                  top: 58 + padding.top,
+                  right: 20,
+                  child: GestureDetector(
+                    onTap: () {}, // Block propagation to overlay
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      width: 280,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Settings',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            height: 1,
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Low Performance Mode',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'If your device struggles with voice quality, enable this to use a simpler text-to-speech system.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white70,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          GestureDetector(
+                            onTap: () => _setTtsProvider('sherpa'),
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: _currentTtsProvider == 'sherpa'
+                                        ? Center(
+                                      child: Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFFFD60A),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Off (Recommended)',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          GestureDetector(
+                            onTap: () => _setTtsProvider('flutter'),
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    child: _currentTtsProvider == 'flutter'
+                                        ? Center(
+                                      child: Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFFFD60A),
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                    )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'On',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

@@ -11,7 +11,7 @@ class StickFigurePlayer extends StatefulWidget {
   final bool canMoveDown;
   final VoidCallback onMoveUp;
   final VoidCallback onMoveDown;
-  final VoidCallback onDelete;
+  final VoidCallback? onDelete; // Made nullable
   final ValueChanged<bool> onInputToggle;
 
   const StickFigurePlayer({
@@ -106,33 +106,35 @@ class _StickFigurePlayerState extends State<StickFigurePlayer>
                       ),
 
                     // Delete button (top right)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: GestureDetector(
-                        onTap: widget.onDelete,
-                        onTapDown: (_) {},
-                        onTapUp: (_) {},
-                        onTapCancel: () {},
-                        onLongPress: () {},
-                        onLongPressStart: (_) {},
-                        onLongPressEnd: (_) {},
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: widget.color,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.close_rounded,
-                            color: Colors.white,
-                            size: 16,
+// Delete button (top right) - only show if callback provided
+                    if (widget.onDelete != null)
+                      Positioned(
+                        top: -4,
+                        right: -4,
+                        child: GestureDetector(
+                          onTap: widget.onDelete,
+                          onTapDown: (_) {},
+                          onTapUp: (_) {},
+                          onTapCancel: () {},
+                          onLongPress: () {},
+                          onLongPressStart: (_) {},
+                          onLongPressEnd: (_) {},
+                          behavior: HitTestBehavior.opaque,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: widget.color,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                           ),
                         ),
                       ),
-                    ),
 
                     // Up arrow (bottom left)
                     if (widget.showOrderControls && widget.canMoveUp)

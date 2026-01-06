@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/setup_screen.dart';
+import 'services/preferences_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize preferences
+  await PreferencesService().init();
+
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const TooSlowApp());
 }
