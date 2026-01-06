@@ -26,8 +26,10 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
   late AnimationController _longPressController;
   late AnimationController _pulseController;
   late AnimationController _settingsOverlayController;
+  late AnimationController _overlayController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _settingsOverlayAnimation;
+  late Animation<double> _overlayAnimation;
 
   @override
   void initState() {
@@ -63,6 +65,15 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     _settingsOverlayAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _settingsOverlayController, curve: Curves.easeOut),
     );
+
+    _overlayController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+
+    _overlayAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _overlayController, curve: Curves.easeOut),
+    );
   }
 
   @override
@@ -79,8 +90,10 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     _longPressController.dispose();
     _pulseController.dispose();
     _settingsOverlayController.dispose();
+    _overlayController.dispose();
     for (var player in _players) {
       player.controller.dispose();
+      player.positionController.dispose();
     }
     super.dispose();
   }
@@ -152,7 +165,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
     if (_isLongPressing) return;
 
-    if (_players.isNotEmpty && _players.last.controller.text.trim().isEmpty) {
+    if (_players.isNotEmpty && _players.last.showingInput && _players.last.controller.text.trim().isEmpty) {
       _showMessage('Name the current player first!');
       HapticFeedback.mediumImpact();
       return;
@@ -164,6 +177,8 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       }
       _players[i].showingInput = false;
     }
+
+    _overlayController.reverse();
     FocusScope.of(context).unfocus();
 
     if (tapY < 50) tapY = 50 + 20;
@@ -192,15 +207,40 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
     HapticFeedback.mediumImpact();
 
+    // Create position animation controller
+    final posController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+
+    final padding = MediaQuery.of(context).padding;
+    final centerX = size.width / 2 - 70;
+    final centerY = size.height / 2 - 85;
+
+    // Animate from tap position to center
+    final posAnimation = Tween<Offset>(
+      begin: Offset(widgetLeft, widgetTop + padding.top),
+      end: Offset(centerX, centerY),
+    ).animate(CurvedAnimation(
+      parent: posController,
+      curve: Curves.easeOut,
+    ));
+
     setState(() {
       _players.add(PlayerData(
         controller: TextEditingController(),
         color: _getPlayerColor(_players.length),
-        absolutePosition: Offset(widgetLeft, widgetTop),
+        absolutePosition: Offset(widgetLeft, widgetTop + padding.top),
         position: Offset(relativeX, relativeY),
         showingInput: true,
+        positionController: posController,
+        positionAnimation: posAnimation,
       ));
     });
+
+    // Start animations
+    posController.forward();
+    _overlayController.forward();
   }
 
   void _handleTapUp(TapUpDetails details) {
@@ -234,20 +274,43 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       return;
     }
 
+    _confirmPlayer(activeIndex);
+  }
+
+  void _confirmPlayer(int? index) {
+    if (index == null) return;
+
+    final player = _players[index];
+    if (player.controller.text.trim().isEmpty) {
+      _showMessage('Name the current player first!');
+      return;
+    }
+
     FocusScope.of(context).unfocus();
-    setState(() {
-      for (var player in _players) {
-        if (player.showingInput) {
-          player.showingInput = false;
-        }
-      }
+
+    // First change to saved name display
+    setState(() => player.showingInput = false);
+
+    // Then animate position back after UI updates
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      player.positionController.reverse();
+      _overlayController.reverse();
     });
   }
 
   void _removePlayer(int index) {
     HapticFeedback.mediumImpact();
+
+    final player = _players[index];
+
+    // If this was the naming player, close overlay
+    if (player.showingInput) {
+      _overlayController.reverse();
+    }
+
     setState(() {
-      _players[index].controller.dispose();
+      player.controller.dispose();
+      player.positionController.dispose();
       _players.removeAt(index);
     });
   }
@@ -421,27 +484,11 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
     final isKeyboardOpen = keyboardHeight > 0;
 
-    // Find active naming player
-    int? activeNamingIndex;
-    if (isKeyboardOpen) {
-      for (int i = 0; i < _players.length; i++) {
-        if (_players[i].showingInput) {
-          activeNamingIndex = i;
-          break;
-        }
-      }
-    }
-
-    final isNamingMode = isKeyboardOpen && activeNamingIndex != null;
-
-    // Title centering: SIMPLE - empty screen = center, has players = top
+    // Title centering: empty screen = center, has players = top
     final shouldBeAtCenter = _players.isEmpty;
 
-    // FIXED positions - no keyboard calculations
     final safeHeight = size.height - padding.top - padding.bottom;
     final titleCenterTop = padding.top + (safeHeight * 0.35);
-    final centerX = size.width / 2 - 70;
-    final centerY = size.height / 2 - 85;
 
     return PopScope(
       canPop: false,
@@ -590,56 +637,127 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                 ),
               ),
 
-              // Layer 3: Players (not being named)
-              // Layer 3: Players (not being named AND not newly created)
-              ..._players.asMap().entries.where((entry) {
-                final player = entry.value;
-                // Don't render if being named OR if it's a new player waiting for keyboard
-                return !isNamingMode && !player.showingInput;
-              }).map((entry) {
+              // Layer 3: Players NOT being named
+              ..._players.asMap().entries.where((entry) => !entry.value.showingInput).map((entry) {
                 final index = entry.key;
                 final player = entry.value;
 
-                return AnimatedPositioned(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  left: player.absolutePosition.dx,
-                  top: player.absolutePosition.dy + padding.top,
-                  child: GestureDetector(
-                    onTap: () {},
-                    behavior: HitTestBehavior.opaque,
-                    child: StickFigurePlayer(
-                      color: player.color,
-                      nameController: player.controller,
-                      showingInput: false,
-                      playerNumber: index + 1,
-                      showOrderControls: _players.length > 1,
-                      canMoveUp: index > 0,
-                      canMoveDown: index < _players.length - 1,
-                      onMoveUp: () => _movePlayerUp(index),
-                      onMoveDown: () => _movePlayerDown(index),
-                      onDelete: () => _removePlayer(index),
-                      onInputToggle: (showing) {
-                        setState(() => player.showingInput = showing);
-                      },
-                    ),
-                  ),
+                return AnimatedBuilder(
+                  animation: player.positionAnimation,
+                  builder: (context, child) {
+                    return Positioned(
+                      left: player.positionAnimation.value.dx,
+                      top: player.positionAnimation.value.dy,
+                      child: GestureDetector(
+                        onTap: () {},
+                        onTapDown: (_) {},
+                        onTapUp: (_) {},
+                        behavior: HitTestBehavior.opaque,
+                        child: StickFigurePlayer(
+                          color: player.color,
+                          nameController: player.controller,
+                          showingInput: false,
+                          playerNumber: index + 1,
+                          showOrderControls: _players.length > 1,
+                          canMoveUp: index > 0,
+                          canMoveDown: index < _players.length - 1,
+                          onMoveUp: () => _movePlayerUp(index),
+                          onMoveDown: () => _movePlayerDown(index),
+                          onDelete: () => _removePlayer(index),
+                          onInputToggle: (showing) {
+                            if (showing) {
+                              setState(() => player.showingInput = true);
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                  },
                 );
               }),
 
-              // Layer 4: Naming overlay
-              if (isNamingMode)
+              // Layer 4: Settings cog (under overlays, non-clickable during naming)
+              Positioned(
+                top: 10 + padding.top,
+                right: 20,
+                child: IgnorePointer(
+                  ignoring: _overlayController.value > 0,
+                  child: GestureDetector(
+                    onTap: _toggleSettings,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Icon(
+                        Icons.settings,
+                        size: 28,
+                        color: Color(0xFFFFFDF5),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Layer 5: Naming overlay (animated fade)
+              if (_overlayController.value > 0)
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: _handleOverlayTap,
-                    child: Container(
-                      color: const Color(0xFF000000).withOpacity(0.5),
+                    child: AnimatedBuilder(
+                      animation: _overlayAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          color: Color(0xFF000000).withOpacity(0.5 * _overlayAnimation.value),
+                        );
+                      },
                     ),
                   ),
                 ),
 
-              // Layer 5: Settings overlay (animated, tappable to close)
+              // Layer 6: Player being named (ABOVE overlay)
+              ..._players.asMap().entries.where((entry) => entry.value.showingInput).map((entry) {
+                final index = entry.key;
+                final player = entry.value;
+
+                return AnimatedBuilder(
+                  animation: player.positionAnimation,
+                  builder: (context, child) {
+                    return Positioned(
+                      left: player.positionAnimation.value.dx,
+                      top: player.positionAnimation.value.dy,
+                      child: GestureDetector(
+                        onTap: () {},
+                        onTapDown: (_) {},
+                        onTapUp: (_) {},
+                        behavior: HitTestBehavior.opaque,
+                        child: StickFigurePlayer(
+                          color: player.color,
+                          nameController: player.controller,
+                          showingInput: true,
+                          playerNumber: index + 1,
+                          showOrderControls: false,
+                          canMoveUp: false,
+                          canMoveDown: false,
+                          onMoveUp: () {},
+                          onMoveDown: () {},
+                          onDelete: _players.length == 1 ? null : () => _removePlayer(index),
+                          onInputToggle: (showing) {
+                            if (!showing) {
+                              _confirmPlayer(index);
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }),
+
+              // Layer 7: Settings overlay (animated, tappable to close)
               if (_showingSettings || _settingsOverlayController.value > 0)
                 Positioned.fill(
                   child: GestureDetector(
@@ -656,29 +774,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                   ),
                 ),
 
-              // Layer 6: Settings cog (always visible)
-              Positioned(
-                top: 20 + padding.top,
-                right: 20,
-                child: GestureDetector(
-                  onTap: _toggleSettings,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Icon(
-                      Icons.settings,
-                      size: 28,
-                      color: Color(0xFFFFFDF5),
-                    ),
-                  ),
-                ),
-              ),
-
-              // Layer 7: Title (above naming overlay)
+              // Layer 8: Title (animated position)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 350),
                 curve: Curves.easeInOut,
@@ -719,84 +815,13 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                 ),
               ),
 
-              // Layer 8: Active naming player (above naming overlay, FIXED center)
-// Layer 8: Active naming player (above naming overlay, FIXED center)
-// Layer 8: Active naming player OR newly created player
-              if (isNamingMode && activeNamingIndex != null)
-                AnimatedPositioned(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeOut,
-                  left: centerX,
-                  top: centerY,
-                  child: GestureDetector(
-                    onTap: () {},
-                    behavior: HitTestBehavior.opaque,
-                    child: StickFigurePlayer(
-                      color: _players[activeNamingIndex!].color,
-                      nameController: _players[activeNamingIndex!].controller,
-                      showingInput: _players[activeNamingIndex!].showingInput,
-                      playerNumber: activeNamingIndex! + 1,
-                      showOrderControls: false, // NO controls while naming
-                      canMoveUp: false,
-                      canMoveDown: false,
-                      onMoveUp: () {},
-                      onMoveDown: () {},
-                      onDelete: () => _removePlayer(activeNamingIndex!),
-                      onInputToggle: (showing) {
-                        if (!showing && _players[activeNamingIndex!].controller.text.trim().isEmpty) {
-                          _players[activeNamingIndex!].controller.text = 'Player ${activeNamingIndex! + 1}';
-                        }
-                        setState(() => _players[activeNamingIndex!].showingInput = showing);
-                      },
-                    ),
-                  ),
-                )
-              // Show player at center even before keyboard opens if it's waiting for input
-              else // Layer 8: Active naming player (centered)
-                if (_players.isNotEmpty && _players.any((p) => p.showingInput))
-                  Builder(
-                    builder: (context) {
-                      // Find the player being named
-                      final namingIndex = _players.indexWhere((p) => p.showingInput);
-                      if (namingIndex == -1) return SizedBox.shrink();
-
-                      return AnimatedPositioned(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        left: centerX,
-                        top: centerY,
-                        child: GestureDetector(
-                          onTap: () {},
-                          behavior: HitTestBehavior.opaque,
-                          child: StickFigurePlayer(
-                            color: _players[namingIndex].color,
-                            nameController: _players[namingIndex].controller,
-                            showingInput: _players[namingIndex].showingInput,
-                            playerNumber: namingIndex + 1,
-                            showOrderControls: false,
-                            canMoveUp: false,
-                            canMoveDown: false,
-                            onMoveUp: () {},
-                            onMoveDown: () {},
-                            onDelete: _players.length == 1 ? null : () => _removePlayer(namingIndex),
-                            onInputToggle: (showing) {
-                              if (!showing && _players[namingIndex].controller.text.trim().isEmpty) {
-                                _players[namingIndex].controller.text = 'Player ${namingIndex + 1}';
-                              }
-                              setState(() => _players[namingIndex].showingInput = showing);
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
               // Layer 9: Settings dropdown (above overlay, blocks inner taps only)
               if (_showingSettings)
                 Positioned(
                   top: 58 + padding.top,
                   right: 20,
                   child: GestureDetector(
-                    onTap: () {}, // Block propagation to overlay
+                    onTap: () {},
                     behavior: HitTestBehavior.opaque,
                     child: Container(
                       width: 280,
@@ -945,6 +970,8 @@ class PlayerData {
   final Offset absolutePosition;
   final Offset position;
   bool showingInput;
+  final AnimationController positionController;
+  final Animation<Offset> positionAnimation;
 
   PlayerData({
     required this.controller,
@@ -952,5 +979,7 @@ class PlayerData {
     required this.absolutePosition,
     required this.position,
     this.showingInput = false,
+    required this.positionController,
+    required this.positionAnimation,
   });
 }
