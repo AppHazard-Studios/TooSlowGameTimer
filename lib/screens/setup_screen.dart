@@ -1,11 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:math';
 import '../models/player.dart';
 import '../models/game_state.dart';
 import '../utils/constants.dart';
 import '../widgets/stick_figure_player.dart';
 import '../services/preferences_service.dart';
 import 'game_screen.dart';
+
+enum PoseType {
+  defaultPose,
+  handsOnHips,
+  oneArmWaving,
+  armsCrossed,
+  pointingUp,
+  shrugging,
+}
+
+enum AnimationType {
+  bobbing,
+  swaying,
+  breathing,
+  bouncing,
+}
+
+enum AccessoryType {
+  none,
+  partyHat,
+  topHat,
+  cap,
+  glasses,
+}
 
 class SetupScreen extends StatefulWidget {
   const SetupScreen({super.key});
@@ -226,6 +251,22 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
       curve: Curves.easeOut,
     ));
 
+    // Generate random visual variations
+    final random = Random();
+    final headScale = 0.8 + random.nextDouble() * 0.4;
+    final torsoScale = 0.8 + random.nextDouble() * 0.5;
+    final armScale = 0.85 + random.nextDouble() * 0.3;
+    final legScale = 0.85 + random.nextDouble() * 0.3;
+
+    // 20% chance for accessory
+    final accessoryType = random.nextDouble() < 0.2
+        ? AccessoryType.values[1 + random.nextInt(AccessoryType.values.length - 1)]
+        : AccessoryType.none;
+
+    // Random pose and animation
+    final poseType = PoseType.values[random.nextInt(PoseType.values.length)];
+    final animationType = AnimationType.values[random.nextInt(AnimationType.values.length)];
+
     setState(() {
       _players.add(PlayerData(
         controller: TextEditingController(),
@@ -235,6 +276,13 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
         showingInput: true,
         positionController: posController,
         positionAnimation: posAnimation,
+        headScale: headScale,
+        torsoScale: torsoScale,
+        armScale: armScale,
+        legScale: legScale,
+        accessoryType: accessoryType,
+        poseType: poseType,
+        animationType: animationType,
       ));
     });
 
@@ -669,6 +717,13 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                               setState(() => player.showingInput = true);
                             }
                           },
+                          headScale: player.headScale,
+                          torsoScale: player.torsoScale,
+                          armScale: player.armScale,
+                          legScale: player.legScale,
+                          accessoryType: player.accessoryType,
+                          poseType: player.poseType,
+                          animationType: player.animationType,
                         ),
                       ),
                     );
@@ -678,7 +733,7 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
 
               // Layer 4: Settings cog (under overlays, non-clickable during naming)
               Positioned(
-                top: 10 + padding.top,
+                top: 20 + padding.top,
                 right: 20,
                 child: IgnorePointer(
                   ignoring: _overlayController.value > 0,
@@ -750,6 +805,13 @@ class _SetupScreenState extends State<SetupScreen> with TickerProviderStateMixin
                               _confirmPlayer(index);
                             }
                           },
+                          headScale: player.headScale,
+                          torsoScale: player.torsoScale,
+                          armScale: player.armScale,
+                          legScale: player.legScale,
+                          accessoryType: player.accessoryType,
+                          poseType: player.poseType,
+                          animationType: player.animationType,
                         ),
                       ),
                     );
@@ -973,6 +1035,15 @@ class PlayerData {
   final AnimationController positionController;
   final Animation<Offset> positionAnimation;
 
+  // Visual variations
+  final double headScale;
+  final double torsoScale;
+  final double armScale;
+  final double legScale;
+  final AccessoryType accessoryType;
+  final PoseType poseType;
+  final AnimationType animationType;
+
   PlayerData({
     required this.controller,
     required this.color,
@@ -981,5 +1052,12 @@ class PlayerData {
     this.showingInput = false,
     required this.positionController,
     required this.positionAnimation,
+    required this.headScale,
+    required this.torsoScale,
+    required this.armScale,
+    required this.legScale,
+    required this.accessoryType,
+    required this.poseType,
+    required this.animationType,
   });
 }
